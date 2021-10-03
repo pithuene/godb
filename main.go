@@ -7,25 +7,22 @@ import (
 
 func main() {
 	fmt.Println("Hello World")
-	pager, err := OpenPager("database.db")
+
+	db, err := OpenDatabase("database.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	page, err := pager.AppendRawPage()
+	err = db.Insert(1, 345)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for i := 0; i < int(PAGE_SIZE); i++ {
-		page.Memory[i] = 100
-	}
-	fmt.Println(page)
-
-	err = page.Flush()
+	res, err := db.Select(1)
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println(res)
 
-	pager.Close()
+	db.Close()
 }
