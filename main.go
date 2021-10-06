@@ -9,16 +9,23 @@ func main() {
 	fmt.Println("Hello World")
 
 	db, err := OpenDatabase("database.db")
+
+	table := &Table{
+		database:     db,
+		FirstPageIdx: -1,
+		LastPageIdx:  -1,
+	}
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = db.Insert(1, 345)
+	err = table.Insert(1, 345)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	res, err := db.Select(1)
+	res, err := table.Select(1)
 	if err != nil {
 		log.Fatal(err)
 	}

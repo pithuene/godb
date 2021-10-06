@@ -1,5 +1,10 @@
 package main
 
+// Pages are the way the filesystems individual chunks of data are accessed.
+// The Pager is responsible for adressing these, mapping them from disk into
+// memory when needed, caching these mappings for efficient use and writing
+// the modified pages back to disk.
+
 import (
 	"errors"
 	"os"
@@ -9,75 +14,75 @@ import (
 
 var PAGE_SIZE = int64(os.Getpagesize())
 
-type RawPage struct {
+type Page struct {
 	// The index of the page in the file
 	Index int64
 	// The memory memory mapped buffer
 	Memory []byte
 }
 
-func (page *RawPage) Flush() error {
+func (page *Page) Flush() error {
 	return unix.Msync(page.Memory, unix.MS_SYNC)
 }
 
-type RawPager struct {
+type Pager struct {
 	// The pages currently mapped into memory
-	Pages map[int64]*RawPage
+	Pages map[int64]*Page
 	File  *os.File
 }
 
-func OpenRawPager(filename string) (*RawPager, error) {
+func OpenPager(filename string) (*Pager, error) {
 	file, err := os.OpenFile("database.db", os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, err
 	}
-	return &RawPager{
-		Pages: map[int64]*RawPage{},
+	return &Pager{
+		Pages: map[int64]*Page{},
 		File:  file,
 	}, nil
 }
 
-func (pager *RawPager) mapRawPageToMemory(rawPageIdx int64) (*RawPage, error) {
+func (pager *Pager) mapPageToMemory(pageIdx int64) (*Page, error) {
 	fileInfo, err := pager.File.Stat()
 	if err != nil {
 		return nil, err
 	}
-	if fileInfo.Size() < PAGE_SIZE*(rawPageIdx+1)-1 {
-		return nil, errors.New("Raw page idx out of range")
+	if fileInfo.Size() < PAGE_SIZE*(pageIdx+1)-1 {
+		return nil, errors.New("Page idx out of range")
 	}
-	buffer, err := unix.Mmap(int(pager.File.Fd()), rawPageIdx*PAGE_SIZE, int(PAGE_SIZE), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
+	buffer, err := unix.Mmap(int(pager.File.Fd()), pageIdx*PAGE_SIZE, int(PAGE_SIZE), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
 	if err != nil {
 		return nil, err
 	}
-	page := &RawPage{
-		Index:  rawPageIdx,
+	page := &Page{
+		Index:  pageIdx,
 		Memory: buffer,
 	}
 	return page, nil
 }
 
 // Maps a page into memory if it isn't already and returns it
-func (pager *RawPager) FetchRawPage(rawPageIdx int64) (*RawPage, error) {
+func (pager *Pager) FetchPage(pageIdx int64) (*Page, error) {
 	// Try and get page from cache
-	page, isMapped := pager.Pages[rawPageIdx]
+	page, isMapped := pager.Pages[pageIdx]
 	if isMapped {
 		return page, nil
 	}
 
 	// Page not in cache. Map page into memory.
-	page, err := pager.mapRawPageToMemory(rawPageIdx)
+	page, err := pager.mapPageToMemory(pageIdx)
 	if err != nil {
 		return nil, err
 	}
 
 	// Add cache entry
-	pager.Pages[rawPageIdx] = page
+	pager.Pages[pageIdx] = page
 	// TODO: Proper caching strategy. Should "uncache" some other page. See p.117
 
 	return page, nil
 }
 
-func (pager *RawPager) AppendRawPage() (*RawPage, error) {
+func (pager *Pager) AppendPage() (*Page, error) {
 	fileInfo, err := pager.File.Stat()
 	if err != nil {
 		return nil, err
@@ -92,10 +97,10 @@ func (pager *RawPager) AppendRawPage() (*RawPage, error) {
 	if err != nil {
 		return nil, err
 	}
-	page, err := pager.FetchRawPage(pageCount)
+	page, err := pager.FetchPage(pageCount)
 	return page, err
 }
 
-func (pager *RawPager) Close() {
+func (pager *Pager) Close() {
 	pager.File.Close()
 }
