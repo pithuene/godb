@@ -1,4 +1,4 @@
-package main
+package table
 
 // Data pages are pages that store actual rows of data.
 // A data page always belongs to a single table.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"godb/table"
 	"log"
 	"os"
 )
@@ -15,8 +16,8 @@ func main() {
 	db, err := OpenDatabase(DATABASE_FILE)
 
 	// TODO: Persist tables
-	table := &Table{
-		database:     db,
+	table := &table.Table{
+		Pager:        db.Pager,
 		FirstPageIdx: -1,
 		LastPageIdx:  -1,
 	}

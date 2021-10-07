@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	"encoding/binary"
@@ -7,14 +7,14 @@ import (
 )
 
 type Table struct {
-	database *Database
+	Pager *pager.Pager
 	// The index of the first DataPage
 	FirstPageIdx int64
 	LastPageIdx  int64
 }
 
 func (table *Table) NewDataPage() (*DataPage, error) {
-	page, err := table.database.Pager.AppendPage()
+	page, err := table.Pager.AppendPage()
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (table *Table) NewDataPage() (*DataPage, error) {
 }
 
 func (table *Table) FetchDataPage(pageIdx int64) (*DataPage, error) {
-	page, err := table.database.Pager.FetchPage(pageIdx)
+	page, err := table.Pager.FetchPage(pageIdx)
 	if err != nil {
 		return nil, err
 	}
