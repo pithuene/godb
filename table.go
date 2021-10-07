@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"godb/pager"
 )
 
 type Table struct {
@@ -46,7 +47,7 @@ func (table *Table) FetchDataPage(pageIdx int64) (*DataPage, error) {
 		return nil, err
 	}
 
-	dataPage, err := page.decodePage()
+	dataPage, err := table.decodePage(page)
 	if err != nil {
 		return nil, err
 	}
@@ -143,4 +144,37 @@ func (table *Table) PreviousPage(currPage *DataPage) (*DataPage, error) {
 	}
 	previousPage, err := table.FetchDataPage(currPage.Prev)
 	return previousPage, err
+}
+
+// Reads the header of a Page and returns the resulting DataPage
+func (table *Table) decodePage(page *pager.Page) (*DataPage, error) {
+	dataPage := &DataPage{
+		page: page,
+	}
+
+	next, n := binary.Varint(page.Memory[0:8])
+	if n <= 0 {
+		return nil, errors.New("Next deserialization failed")
+	}
+	dataPage.Next = next
+
+	prev, n := binary.Varint(page.Memory[8:16])
+	if n <= 0 {
+		return nil, errors.New("Prev deserialization failed")
+	}
+	dataPage.Prev = prev
+
+	entrySize, n := binary.Varint(page.Memory[16:24])
+	if n <= 0 {
+		return nil, errors.New("EntrySize deserialization failed")
+	}
+	dataPage.EntrySize = entrySize
+
+	freeEntries, n := binary.Varint(page.Memory[24:32])
+	if n <= 0 {
+		return nil, errors.New("FreeEntries deserialization failed")
+	}
+	dataPage.FreeEntries = freeEntries
+
+	return dataPage, nil
 }

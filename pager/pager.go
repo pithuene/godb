@@ -1,9 +1,8 @@
-package main
-
 // Pages are the way the filesystems individual chunks of data are accessed.
 // The Pager is responsible for adressing these, mapping them from disk into
 // memory when needed, caching these mappings for efficient use and writing
 // the modified pages back to disk.
+package pager
 
 import (
 	"errors"
@@ -11,19 +10,6 @@ import (
 
 	"golang.org/x/sys/unix"
 )
-
-var PAGE_SIZE = int64(os.Getpagesize())
-
-type Page struct {
-	// The index of the page in the file
-	Index int64
-	// The memory memory mapped buffer
-	Memory []byte
-}
-
-func (page *Page) Flush() error {
-	return unix.Msync(page.Memory, unix.MS_SYNC)
-}
 
 type Pager struct {
 	// The pages currently mapped into memory

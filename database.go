@@ -1,11 +1,13 @@
 package main
 
+import "godb/pager"
+
 type Database struct {
-	Pager *Pager
+	Pager *pager.Pager
 }
 
 func OpenDatabase(filename string) (*Database, error) {
-	pager, err := OpenPager(filename)
+	pager, err := pager.OpenPager(filename)
 	if err != nil {
 		return nil, err
 	}

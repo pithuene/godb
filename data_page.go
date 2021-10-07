@@ -11,6 +11,7 @@ package main
 import (
 	"encoding/binary"
 	"errors"
+	"godb/pager"
 )
 
 const DATAPAGE_HEADER_SIZE = 32
@@ -18,7 +19,7 @@ const DATAPAGE_HEADER_SIZE = 32
 // A page used for storing actual data
 type DataPage struct {
 	// The underlying page
-	page *Page
+	page *pager.Page
 
 	// Page indices of adjacent pages
 	Next int64
@@ -36,41 +37,8 @@ func (dataPage *DataPage) Flush() error {
 	return page.Flush()
 }
 
-// Reads the header of a Page and returns the resulting DataPage
-func (page *Page) decodePage() (*DataPage, error) {
-	dataPage := &DataPage{
-		page: page,
-	}
-
-	next, n := binary.Varint(page.Memory[0:8])
-	if n <= 0 {
-		return nil, errors.New("Next deserialization failed")
-	}
-	dataPage.Next = next
-
-	prev, n := binary.Varint(page.Memory[8:16])
-	if n <= 0 {
-		return nil, errors.New("Prev deserialization failed")
-	}
-	dataPage.Prev = prev
-
-	entrySize, n := binary.Varint(page.Memory[16:24])
-	if n <= 0 {
-		return nil, errors.New("EntrySize deserialization failed")
-	}
-	dataPage.EntrySize = entrySize
-
-	freeEntries, n := binary.Varint(page.Memory[24:32])
-	if n <= 0 {
-		return nil, errors.New("FreeEntries deserialization failed")
-	}
-	dataPage.FreeEntries = freeEntries
-
-	return dataPage, nil
-}
-
 // Writes back all the header values and returns the underlying raw page
-func (page *DataPage) encodePage() *Page {
+func (page *DataPage) encodePage() *pager.Page {
 	binary.PutVarint(page.page.Memory[0:8], page.Next)
 	binary.PutVarint(page.page.Memory[8:16], page.Prev)
 	binary.PutVarint(page.page.Memory[16:24], page.EntrySize)
@@ -80,7 +48,7 @@ func (page *DataPage) encodePage() *Page {
 
 // The number of entry slots (not necessarily in use)
 func (page *DataPage) EntryCapacity() int64 {
-	return (PAGE_SIZE - DATAPAGE_HEADER_SIZE) / ENTRY_SIZE
+	return (pager.PAGE_SIZE - DATAPAGE_HEADER_SIZE) / ENTRY_SIZE
 }
 
 func (page *DataPage) GetEntry(entryIdx int64) ([]byte, error) {
@@ -94,7 +62,7 @@ func (page *DataPage) GetEntry(entryIdx int64) ([]byte, error) {
 // Finds a free entry and **marks it as used!**
 func (dpage *DataPage) FindFreeEntry() ([]byte, error) {
 	offset := int64(DATAPAGE_HEADER_SIZE)
-	for offset+ENTRY_SIZE < PAGE_SIZE {
+	for offset+ENTRY_SIZE < pager.PAGE_SIZE {
 		entry := dpage.page.Memory[offset : offset+ENTRY_SIZE]
 		entryHeader := DeserializeEntryHeader(entry[0])
 		if !entryHeader.InUse {
