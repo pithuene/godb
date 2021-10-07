@@ -20,7 +20,6 @@ type DataPage struct {
 	// The underlying page
 	page *Page
 
-	// TODO: Not actually used yet
 	// Page indices of adjacent pages
 	Next int64
 	Prev int64

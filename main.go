@@ -3,13 +3,18 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 )
+
+const DATABASE_FILE = "database.db"
 
 func main() {
 	fmt.Println("Hello World")
 
-	db, err := OpenDatabase("database.db")
+	os.Remove(DATABASE_FILE)
+	db, err := OpenDatabase(DATABASE_FILE)
 
+	// TODO: Persist tables
 	table := &Table{
 		database:     db,
 		FirstPageIdx: -1,

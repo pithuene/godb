@@ -17,6 +17,19 @@ func (table *Table) NewDataPage() (*DataPage, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if table.LastPageIdx >= 0 {
+		prevPage, err := table.FetchDataPage(table.LastPageIdx)
+		if err != nil {
+			return nil, err
+		}
+		prevPage.Next = page.Index
+		prevPage.Flush()
+	} else {
+		table.FirstPageIdx = page.Index
+	}
+	table.LastPageIdx = page.Index
+
 	dataPage := &DataPage{
 		page:      page,
 		Next:      -1,
@@ -47,9 +60,9 @@ const ENTRY_SIZE = 17
 // Find page which still has free entries and create one if there is none.
 // TODO: Currently iterates through all pages. This should be handled using a free list or the like.
 func (table *Table) FindFreePage() (*DataPage, error) {
-	pageIdx := int64(0)
+	dpage, err := table.FetchDataPage(table.FirstPageIdx)
+
 	for {
-		dpage, err := table.FetchDataPage(pageIdx)
 		if err != nil { // Error occurs when pageIdx is out of range, so there is no free space on any page
 			dpage, err = table.NewDataPage()
 			if err != nil {
@@ -60,7 +73,7 @@ func (table *Table) FindFreePage() (*DataPage, error) {
 		if dpage.FreeEntries > 0 {
 			return dpage, nil
 		} else {
-			pageIdx++
+			dpage, err = table.NextPage(dpage)
 		}
 	}
 }
