@@ -18,7 +18,7 @@ type Pager struct {
 }
 
 func OpenPager(filename string) (*Pager, error) {
-	file, err := os.OpenFile("database.db", os.O_RDWR|os.O_CREATE, 0755)
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return nil, err
 	}
