@@ -48,29 +48,29 @@ func (page *DataPage) encodePage() *pager.Page {
 
 // The number of entry slots (not necessarily in use)
 func (page *DataPage) EntryCapacity() int64 {
-	return (pager.PAGE_SIZE - DATAPAGE_HEADER_SIZE) / ENTRY_SIZE
+	return (pager.PAGE_SIZE - DATAPAGE_HEADER_SIZE) / page.EntrySize
 }
 
 func (page *DataPage) GetEntry(entryIdx int64) ([]byte, error) {
 	if entryIdx > page.EntryCapacity() {
 		return nil, errors.New("Entry index out of range")
 	}
-	offset := DATAPAGE_HEADER_SIZE + (entryIdx * ENTRY_SIZE)
-	return page.page.Memory[offset : offset+ENTRY_SIZE], nil
+	offset := DATAPAGE_HEADER_SIZE + (entryIdx * page.EntrySize)
+	return page.page.Memory[offset : offset+page.EntrySize], nil
 }
 
 // Finds a free entry and **marks it as used!**
 func (dpage *DataPage) FindFreeEntry() ([]byte, error) {
 	offset := int64(DATAPAGE_HEADER_SIZE)
-	for offset+ENTRY_SIZE < pager.PAGE_SIZE {
-		entry := dpage.page.Memory[offset : offset+ENTRY_SIZE]
+	for offset+dpage.EntrySize < pager.PAGE_SIZE {
+		entry := dpage.page.Memory[offset : offset+dpage.EntrySize]
 		entryHeader := DeserializeEntryHeader(entry[0])
 		if !entryHeader.InUse {
 			entryHeader.InUse = true
 			entry[0] = entryHeader.Serialize()
 			return entry, nil
 		}
-		offset += ENTRY_SIZE
+		offset += dpage.EntrySize
 	}
 	return nil, errors.New("No free entry found on page")
 }

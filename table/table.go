@@ -11,6 +11,7 @@ type Table struct {
 	// The index of the first DataPage
 	FirstPageIdx int64
 	LastPageIdx  int64
+	Schema       TableSchema
 }
 
 func (table *Table) NewDataPage() (*DataPage, error) {
@@ -35,7 +36,7 @@ func (table *Table) NewDataPage() (*DataPage, error) {
 		page:      page,
 		Next:      -1,
 		Prev:      table.LastPageIdx,
-		EntrySize: ENTRY_SIZE,
+		EntrySize: table.EntrySize(),
 	}
 	dataPage.FreeEntries = dataPage.EntryCapacity()
 	return dataPage, nil
@@ -55,8 +56,14 @@ func (table *Table) FetchDataPage(pageIdx int64) (*DataPage, error) {
 	return dataPage, nil
 }
 
-// TODO: This only makes sense as long as all data is (int64, int64)
-const ENTRY_SIZE = 17
+// The byte length of a row
+func (table *Table) EntrySize() int64 {
+	size := int64(binary.Size(EntryHeader{}))
+	for _, column := range table.Schema.Columns {
+		size += column.Type.Length
+	}
+	return size
+}
 
 // Find page which still has free entries and create one if there is none.
 // TODO: Currently iterates through all pages. This should be handled using a free list or the like.
@@ -79,8 +86,11 @@ func (table *Table) FindFreePage() (*DataPage, error) {
 	}
 }
 
-// TODO: Every tuple is going to be (int64, int64) for now
-func (table *Table) Insert(key int64, value int64) error {
+func (table *Table) Insert(row Row) error {
+	if !table.Schema.CheckSchema(row) {
+		return errors.New("Insert failed. Row doesn't conform to table schema.")
+	}
+
 	page, err := table.FindFreePage()
 
 	entryBuffer, err := page.FindFreeEntry()
@@ -88,46 +98,89 @@ func (table *Table) Insert(key int64, value int64) error {
 		return err
 	}
 
-	binary.PutVarint(entryBuffer[1:9], key)
-	binary.PutVarint(entryBuffer[9:17], value)
+	offset := binary.Size(EntryHeader{})
+	for _, column := range row {
+		// TODO: There is probably a better way to insert a slice into another one
+		encoded := column.Encode()
+		for i := 0; i < int(column.Type().Length); i++ {
+			entryBuffer[offset+i] = encoded[i]
+		}
+		offset += int(column.Type().Length)
+	}
 
 	page.Flush()
 
 	return nil
 }
 
-// TODO: This only makes sense as long as all data is (int64, int64)
-func (table *Table) Select(key int64) (int64, error) {
-	pageIdx := int64(0)
+func (table *Table) Select(column string, value ColumnValue) (Row, error) {
+	colDef, colIdx, err := table.Schema.FindColumnByName(column)
+	if err != nil {
+		return nil, err
+	}
+
+	if colDef.Type != value.Type() {
+		return nil, errors.New("Select failed. Value type doesn't match")
+	}
+
+	page, err := table.FetchDataPage(table.FirstPageIdx)
 	for {
-		page, err := table.FetchDataPage(pageIdx)
 		if err != nil { // pageIdx out of range. Key not found.
-			return -1, errors.New("Key not found")
+			return nil, errors.New("Key not found")
 		}
 
 		for entryIdx := int64(0); entryIdx < page.EntryCapacity(); entryIdx++ {
 			entryBuffer, err := page.GetEntry(entryIdx)
 			if err != nil {
-				return -1, err
+				return nil, err
 			}
+
 			entryHeader := DeserializeEntryHeader(entryBuffer[0])
 			if entryHeader.InUse {
-				entryKey, n := binary.Varint(entryBuffer[1:9])
-				if n <= 0 {
-					return -1, err
+				targetColumnOffset := binary.Size(EntryHeader{})
+				for i := 0; i < colIdx; i++ {
+					targetColumnOffset += int(table.Schema.Columns[i].Type.Length)
 				}
-				if entryKey == key {
+				targetColumnRaw := entryBuffer[targetColumnOffset : targetColumnOffset+int(colDef.Type.Length)]
+				columnValue, err := colDef.Type.Decode(targetColumnRaw)
+				if err != nil {
+					return nil, err
+				}
+
+				compVal, err := columnValue.Compare(value)
+				if err != nil {
+					return nil, err
+				}
+
+				if compVal == 0 {
 					// FOUND!
-					value, n := binary.Varint(entryBuffer[9:17])
-					if n <= 0 {
-						return -1, err
+					row, err := table.decodeRow(entryBuffer, table.Schema)
+					if err != nil {
+						return nil, err
 					}
-					return value, nil
+
+					return row, nil
 				}
 			}
 		}
-		pageIdx++
+		page, err = table.NextPage(page)
 	}
+}
+
+func (table *Table) decodeRow(buffer []byte, schema TableSchema) (Row, error) {
+	row := make([]ColumnValue, len(table.Schema.Columns))
+	offset := int64(binary.Size(EntryHeader{}))
+	for i, colDef := range table.Schema.Columns {
+		val, err := colDef.Type.Decode(buffer[offset : offset+colDef.Type.Length])
+		if err != nil {
+			return nil, err
+		}
+
+		row[i] = val
+
+		offset += colDef.Type.Length
+	}
+	return row, nil
 }
 
 func (table *Table) NextPage(currPage *DataPage) (*DataPage, error) {

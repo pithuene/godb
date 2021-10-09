@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"godb/table"
 	"log"
 	"os"
@@ -10,32 +9,39 @@ import (
 const DATABASE_FILE = "database.db"
 
 func main() {
-	fmt.Println("Hello World")
-
 	os.Remove(DATABASE_FILE)
 	db, err := OpenDatabase(DATABASE_FILE)
 
 	// TODO: Persist tables
-	table := &table.Table{
+	newTable := &table.Table{
 		Pager:        db.Pager,
 		FirstPageIdx: -1,
 		LastPageIdx:  -1,
+		Schema: table.TableSchema{
+			Columns: []table.ColumnDef{
+				{Name: "key", Type: table.TypeLong},
+				{Name: "value", Type: table.TypeLong},
+			},
+		},
 	}
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = table.Insert(1, 345)
+	insertValue := []table.ColumnValue{
+		table.LongFrom(1),
+		table.LongFrom(12345),
+	}
+	err = newTable.Insert(insertValue)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	res, err := table.Select(1)
+	_, err = newTable.Select("key", table.LongFrom(1))
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Println(res)
 
 	db.Close()
 }
