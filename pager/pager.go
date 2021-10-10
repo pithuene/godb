@@ -12,8 +12,7 @@ import (
 )
 
 type Pager struct {
-	// The pages currently mapped into memory
-	Pages map[int64]*Page
+	Cache Cache
 	File  *os.File
 }
 
@@ -23,7 +22,7 @@ func OpenPager(filename string) (*Pager, error) {
 		return nil, err
 	}
 	return &Pager{
-		Pages: map[int64]*Page{},
+		Cache: NewGclockCache(),
 		File:  file,
 	}, nil
 }
@@ -50,8 +49,8 @@ func (pager *Pager) mapPageToMemory(pageIdx int64) (*Page, error) {
 // Maps a page into memory if it isn't already and returns it
 func (pager *Pager) FetchPage(pageIdx int64) (*Page, error) {
 	// Try and get page from cache
-	page, isMapped := pager.Pages[pageIdx]
-	if isMapped {
+	page := pager.Cache.Get(pageIdx)
+	if page != nil {
 		return page, nil
 	}
 
@@ -62,8 +61,7 @@ func (pager *Pager) FetchPage(pageIdx int64) (*Page, error) {
 	}
 
 	// Add cache entry
-	pager.Pages[pageIdx] = page
-	// TODO: Proper caching strategy. Should "uncache" some other page. See p.117
+	pager.Cache.Add(page)
 
 	return page, nil
 }

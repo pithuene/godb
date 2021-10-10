@@ -38,9 +38,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, err = newTable.Select("key", table.LongFrom(1))
+	row, err := newTable.Select("key", table.LongFrom(1))
 	if err != nil {
 		log.Fatal(err)
+	} else {
+		for i, col := range row {
+			log.Println(newTable.Schema.Columns[i].Name + ": " + col.String())
+		}
 	}
 
 	db.Close()
