@@ -31,19 +31,23 @@ func (gc *GclockCache) Get(idx int64) *Page {
 }
 
 func (gc *GclockCache) findPageToReplace() (int, int64) {
-	currIdx := gc.SearchIndex
 	for {
-		if len(gc.Pages) <= currIdx {
-			currIdx = 0
+		if len(gc.Pages) <= gc.SearchIndex {
+			gc.SearchIndex = 0
 		}
-		gc.Pages[currIdx].ReferenceCounter--
-		if gc.Pages[currIdx].ReferenceCounter <= 0 {
-			break
+		gc.Pages[gc.SearchIndex].ReferenceCounter--
+		if gc.Pages[gc.SearchIndex].ReferenceCounter <= 0 {
+			replacementIdx := gc.SearchIndex
+
+			// Increment once more so the newly cached page isn't the first candidate next time
+			gc.SearchIndex++
+			gc.SearchIndex %= CACHE_SIZE
+
+			return replacementIdx, gc.Pages[replacementIdx].Page.Index
 		}
-		currIdx++
-		currIdx %= CACHE_SIZE
+		gc.SearchIndex++
+		gc.SearchIndex %= CACHE_SIZE
 	}
-	return currIdx, gc.Pages[currIdx].Page.Index
 }
 
 func (gc *GclockCache) Add(page *Page) int64 {
