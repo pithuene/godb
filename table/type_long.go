@@ -11,9 +11,8 @@ func LongFrom(val int64) *ValLong {
 }
 
 var TypeLong = &DataType{
-	Length: 8,
 	Decode: func(encoded []byte) (ColumnValue, error) {
-		result, n := binary.Varint(encoded)
+		result, n := binary.Varint(encoded[0:8])
 		if n <= 0 {
 			return nil, errors.New("Failed to decode value")
 		}
@@ -21,7 +20,9 @@ var TypeLong = &DataType{
 	},
 }
 
-// TODO: Why can't I create a receiver function on an aliased int64
+// TODO: Replace these with just int64 by creating a typedef
+// TODO: type ValLong int64
+
 type ValLong struct {
 	Value int64
 }
@@ -34,8 +35,12 @@ func (l *ValLong) Type() *DataType {
 	return TypeLong
 }
 
+func (l *ValLong) Length() int {
+	return 8
+}
+
 func (l *ValLong) Encode() []byte {
-	res := make([]byte, l.Type().Length)
+	res := make([]byte, l.Length())
 	binary.PutVarint(res, l.Value)
 	return res
 }

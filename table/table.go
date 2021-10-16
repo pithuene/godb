@@ -36,12 +36,12 @@ func (table *Table) NewDataPage() (*DataPage, error) {
 	dataPage := &DataPage{
 		page: page,
 		Header: DataPageHeader{
-			Next:      -1,
-			Prev:      table.LastPageIdx,
-			EntrySize: table.EntrySize(),
+			Next:           -1,
+			Prev:           table.LastPageIdx,
+			FreeSpaceStart: int16(binary.Size(DataPageHeader{})),
+			FreeSpaceEnd:   int16(pager.PAGE_SIZE),
 		},
 	}
-	dataPage.Header.FreeEntries = dataPage.EntryCapacity()
 	return dataPage, nil
 }
 
@@ -59,29 +59,20 @@ func (table *Table) FetchDataPage(pageIdx int64) (*DataPage, error) {
 	return dataPage, nil
 }
 
-// The byte length of a row
-func (table *Table) EntrySize() int64 {
-	size := int64(binary.Size(EntryHeader{}))
-	for _, column := range table.Schema.Columns {
-		size += column.Type.Length
-	}
-	return size
-}
-
-// Find page which still has free entries and create one if there is none.
+// Find page which still has sufficient space and create one if there is none.
 // TODO: Currently iterates through all pages. This should be handled using a free list or the like.
-func (table *Table) FindFreePage() (*DataPage, error) {
+func (table *Table) FindFreePage(requiredSpace int) (*DataPage, error) {
 	dpage, err := table.FetchDataPage(table.FirstPageIdx)
 
 	for {
 		if err != nil { // Error occurs when pageIdx is out of range, so there is no free space on any page
-			dpage, err = table.NewDataPage()
+			newPage, err := table.NewDataPage()
 			if err != nil {
 				return nil, err
 			}
-			return dpage, nil
+			return newPage, nil
 		}
-		if dpage.Header.FreeEntries > 0 {
+		if dpage.AvailableSpace() >= requiredSpace {
 			return dpage, nil
 		} else {
 			dpage, err = table.NextPage(dpage)
@@ -94,21 +85,26 @@ func (table *Table) Insert(row Row) error {
 		return errors.New("Insert failed. Row doesn't conform to table schema.")
 	}
 
-	page, err := table.FindFreePage()
+	rowLen := row.Length()
 
-	entryBuffer, err := page.FindFreeEntry()
+	page, err := table.FindFreePage(rowLen)
 	if err != nil {
 		return err
 	}
 
-	offset := binary.Size(EntryHeader{})
+	entryBuffer, err := page.FindFreeEntry(rowLen)
+	if err != nil {
+		return err
+	}
+
+	offset := 0
 	for _, column := range row {
 		// TODO: There is probably a better way to insert a slice into another one
 		encoded := column.Encode()
-		for i := 0; i < int(column.Type().Length); i++ {
+		for i := 0; i < int(column.Length()); i++ {
 			entryBuffer[offset+i] = encoded[i]
 		}
-		offset += int(column.Type().Length)
+		offset += int(column.Length())
 	}
 
 	page.Flush()
@@ -116,13 +112,13 @@ func (table *Table) Insert(row Row) error {
 	return nil
 }
 
-func (table *Table) Select(column string, value ColumnValue) (Row, error) {
+func (table *Table) Select(column string, targetValue ColumnValue) (Row, error) {
 	colDef, colIdx, err := table.Schema.FindColumnByName(column)
 	if err != nil {
 		return nil, err
 	}
 
-	if colDef.Type != value.Type() {
+	if colDef.Type != targetValue.Type() {
 		return nil, errors.New("Select failed. Value type doesn't match")
 	}
 
@@ -132,58 +128,49 @@ func (table *Table) Select(column string, value ColumnValue) (Row, error) {
 			return nil, errors.New("Key not found")
 		}
 
-		for entryIdx := int64(0); entryIdx < page.EntryCapacity(); entryIdx++ {
+		for entryIdx := int16(0); entryIdx < page.Header.RowPointersLength; entryIdx++ {
 			entryBuffer, err := page.GetEntry(entryIdx)
+			if err != nil {
+				continue
+			}
+
+			row, _, err := table.decodeRow(entryBuffer, table.Schema)
 			if err != nil {
 				return nil, err
 			}
 
-			entryHeader := DeserializeEntryHeader(entryBuffer[0])
-			if entryHeader.InUse {
-				targetColumnOffset := binary.Size(EntryHeader{})
-				for i := 0; i < colIdx; i++ {
-					targetColumnOffset += int(table.Schema.Columns[i].Type.Length)
-				}
-				targetColumnRaw := entryBuffer[targetColumnOffset : targetColumnOffset+int(colDef.Type.Length)]
-				columnValue, err := colDef.Type.Decode(targetColumnRaw)
-				if err != nil {
-					return nil, err
-				}
+			compVal, err := row[colIdx].Compare(targetValue)
+			if err != nil {
+				return nil, err
+			}
 
-				compVal, err := columnValue.Compare(value)
-				if err != nil {
-					return nil, err
-				}
-
-				if compVal == 0 {
-					// FOUND!
-					row, err := table.decodeRow(entryBuffer, table.Schema)
-					if err != nil {
-						return nil, err
-					}
-
-					return row, nil
-				}
+			if compVal == 0 {
+				// FOUND!
+				return row, nil
 			}
 		}
 		page, err = table.NextPage(page)
 	}
 }
 
-func (table *Table) decodeRow(buffer []byte, schema TableSchema) (Row, error) {
+// The given buffer starts with the row value, but can be longer.
+// This is necessary, because the length of the value is not yet known.
+//
+// Returns the row, the number of bytes read and optionally an error.
+func (table *Table) decodeRow(buffer []byte, schema TableSchema) (Row, int64, error) {
 	row := make([]ColumnValue, len(table.Schema.Columns))
-	offset := int64(binary.Size(EntryHeader{}))
+	offset := int64(0)
 	for i, colDef := range table.Schema.Columns {
-		val, err := colDef.Type.Decode(buffer[offset : offset+colDef.Type.Length])
+		val, err := colDef.Type.Decode(buffer[offset:])
 		if err != nil {
-			return nil, err
+			return nil, -1, err
 		}
 
 		row[i] = val
 
-		offset += colDef.Type.Length
+		offset += int64(val.Length())
 	}
-	return row, nil
+	return row, offset, nil
 }
 
 func (table *Table) NextPage(currPage *DataPage) (*DataPage, error) {
@@ -212,29 +199,10 @@ func (table *Table) decodePage(page *pager.Page) (*DataPage, error) {
 	reader := bytes.NewReader(page.Memory[0:binary.Size(dataPage.Header)])
 	binary.Read(reader, binary.BigEndian, &dataPage.Header)
 
-	/*next, n := binary.Varint(page.Memory[0:8])
-	if n <= 0 {
-		return nil, errors.New("Next deserialization failed")
-	}
-	dataPage.Header.Next = next
+	dataPage.RowPointers = make([]int16, dataPage.Header.RowPointersLength)
 
-	prev, n := binary.Varint(page.Memory[8:16])
-	if n <= 0 {
-		return nil, errors.New("Prev deserialization failed")
-	}
-	dataPage.Header.Prev = prev
-
-	entrySize, n := binary.Varint(page.Memory[16:24])
-	if n <= 0 {
-		return nil, errors.New("EntrySize deserialization failed")
-	}
-	dataPage.Header.EntrySize = entrySize
-
-	freeEntries, n := binary.Varint(page.Memory[24:32])
-	if n <= 0 {
-		return nil, errors.New("FreeEntries deserialization failed")
-	}
-	dataPage.Header.FreeEntries = freeEntries*/
+	reader = bytes.NewReader(page.Memory[binary.Size(dataPage.Header):dataPage.Header.FreeSpaceStart])
+	binary.Read(reader, binary.BigEndian, &dataPage.RowPointers)
 
 	return dataPage, nil
 }

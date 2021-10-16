@@ -15,23 +15,36 @@ import (
 	"godb/pager"
 )
 
+// The ratio of space unavailable to inserts.
+// This space is kept free to allow for resizing of variable length entries without moving them to another page.
+const DATA_PAGE_FREE_SPACE_RATIO = 0.2
+
+var DataPageFreeSpace = int16(float32(pager.PAGE_SIZE) * DATA_PAGE_FREE_SPACE_RATIO)
+
 type DataPageHeader struct {
 	// Page indices of adjacent pages
 	Next int64
 	Prev int64
 
-	// Fixed size of all entries. Includes the header.
-	EntrySize int64
+	RowPointersLength int16
 
-	// The number of tuples on this page, which are not in use
-	FreeEntries int64
+	// The offset of the first free byte.
+	// Increases as more RowPointers are added.
+	FreeSpaceStart int16
+	// The offset of the last non-free byte.
+	// Increases as more row data is added at the end.
+	FreeSpaceEnd int16
 }
 
 // A page used for storing actual data
 type DataPage struct {
 	// The underlying page
-	page   *pager.Page
+	page *pager.Page
+	// Fixed length header
 	Header DataPageHeader
+	// The offsets of the rows on this page.
+	// Negative if not in use.
+	RowPointers []int16
 }
 
 func (dataPage *DataPage) Flush() error {
@@ -39,39 +52,71 @@ func (dataPage *DataPage) Flush() error {
 	return page.Flush()
 }
 
-// Writes back all the header values and returns the underlying raw page
+// Writes back all the header values including the row pointers and returns the underlying raw page
 func (page *DataPage) encodePage() *pager.Page {
 	var buf bytes.Buffer
+
 	binary.Write(&buf, binary.BigEndian, page.Header)
 	copy(page.page.Memory[0:buf.Len()], buf.Bytes())
+
+	buf.Reset()
+	binary.Write(&buf, binary.BigEndian, page.RowPointers)
+	bytes := buf.Bytes()
+	copy(page.page.Memory[binary.Size(page.Header):page.Header.FreeSpaceStart], bytes)
+
 	return page.page
 }
 
-// The number of entry slots (not necessarily in use)
-func (page *DataPage) EntryCapacity() int64 {
-	return (pager.PAGE_SIZE - int64(binary.Size(page.Header))) / page.Header.EntrySize
-}
-
-func (page *DataPage) GetEntry(entryIdx int64) ([]byte, error) {
-	if entryIdx > page.EntryCapacity() {
+// Returns a byte slice with beginning with the entry at the given index.
+// The slice will extend to the end of the page as entry length isn't known.
+func (page *DataPage) GetEntry(entryIdx int16) ([]byte, error) {
+	if entryIdx >= page.Header.RowPointersLength {
 		return nil, errors.New("Entry index out of range")
 	}
-	offset := int64(binary.Size(page.Header)) + (entryIdx * page.Header.EntrySize)
-	return page.page.Memory[offset : offset+page.Header.EntrySize], nil
+
+	offset := page.RowPointers[entryIdx]
+
+	if offset < 0 { // Pointer not in use
+		return nil, errors.New("Entry index empty")
+	}
+
+	return page.page.Memory[offset:], nil
+}
+
+// Finds or creates an available RowPointer
+func (dpage *DataPage) findAvailableRowPointer() int {
+	for i := int16(0); i < dpage.Header.RowPointersLength; i++ {
+		rowPointer := dpage.RowPointers[i]
+		if rowPointer < 0 { // Available
+			return int(i)
+		}
+	}
+
+	// Add new row pointer
+	dpage.RowPointers = append(dpage.RowPointers, -1)
+	// Adjust FreeSpaceStart
+	dpage.Header.FreeSpaceStart += 4
+	dpage.Header.RowPointersLength++
+	return len(dpage.RowPointers) - 1
+}
+
+// Checks how much space is available for insert
+func (dpage *DataPage) AvailableSpace() int {
+	freeSpace := dpage.Header.FreeSpaceEnd - dpage.Header.FreeSpaceStart
+	insertAvailableSpace := freeSpace - DataPageFreeSpace
+	return int(insertAvailableSpace)
 }
 
 // Finds a free entry and **marks it as used!**
-func (dpage *DataPage) FindFreeEntry() ([]byte, error) {
-	offset := int64(binary.Size(dpage.Header))
-	for offset+dpage.Header.EntrySize < pager.PAGE_SIZE {
-		entry := dpage.page.Memory[offset : offset+dpage.Header.EntrySize]
-		entryHeader := DeserializeEntryHeader(entry[0])
-		if !entryHeader.InUse {
-			entryHeader.InUse = true
-			entry[0] = entryHeader.Serialize()
-			return entry, nil
-		}
-		offset += dpage.Header.EntrySize
+// Receives the length required for the new entry.
+func (dpage *DataPage) FindFreeEntry(requiredSpace int) ([]byte, error) {
+	if dpage.AvailableSpace() < requiredSpace {
+		return nil, errors.New("No available space left on page")
 	}
-	return nil, errors.New("No free entry found on page")
+
+	rowPointerIdx := dpage.findAvailableRowPointer()
+	rowStart := dpage.Header.FreeSpaceEnd - int16(requiredSpace) - 1
+	dpage.RowPointers[rowPointerIdx] = rowStart
+
+	return dpage.page.Memory[rowStart : int(rowStart)+requiredSpace], nil
 }

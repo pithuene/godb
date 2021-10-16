@@ -20,7 +20,7 @@ func main() {
 		Schema: table.TableSchema{
 			Columns: []table.ColumnDef{
 				{Name: "key", Type: table.TypeLong},
-				{Name: "value", Type: table.TypeLong},
+				{Name: "value", Type: table.TypeString},
 			},
 		},
 	}
@@ -31,7 +31,7 @@ func main() {
 
 	insertValue := []table.ColumnValue{
 		table.LongFrom(1),
-		table.LongFrom(12345),
+		table.StringFrom("Hello World"),
 	}
 	err = newTable.Insert(insertValue)
 	if err != nil {
