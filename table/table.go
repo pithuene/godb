@@ -1,6 +1,7 @@
 package table
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"godb/pager"
@@ -25,7 +26,7 @@ func (table *Table) NewDataPage() (*DataPage, error) {
 		if err != nil {
 			return nil, err
 		}
-		prevPage.Next = page.Index
+		prevPage.Header.Next = page.Index
 		prevPage.Flush()
 	} else {
 		table.FirstPageIdx = page.Index
@@ -33,12 +34,14 @@ func (table *Table) NewDataPage() (*DataPage, error) {
 	table.LastPageIdx = page.Index
 
 	dataPage := &DataPage{
-		page:      page,
-		Next:      -1,
-		Prev:      table.LastPageIdx,
-		EntrySize: table.EntrySize(),
+		page: page,
+		Header: DataPageHeader{
+			Next:      -1,
+			Prev:      table.LastPageIdx,
+			EntrySize: table.EntrySize(),
+		},
 	}
-	dataPage.FreeEntries = dataPage.EntryCapacity()
+	dataPage.Header.FreeEntries = dataPage.EntryCapacity()
 	return dataPage, nil
 }
 
@@ -78,7 +81,7 @@ func (table *Table) FindFreePage() (*DataPage, error) {
 			}
 			return dpage, nil
 		}
-		if dpage.FreeEntries > 0 {
+		if dpage.Header.FreeEntries > 0 {
 			return dpage, nil
 		} else {
 			dpage, err = table.NextPage(dpage)
@@ -184,50 +187,54 @@ func (table *Table) decodeRow(buffer []byte, schema TableSchema) (Row, error) {
 }
 
 func (table *Table) NextPage(currPage *DataPage) (*DataPage, error) {
-	if currPage.Next < 0 {
+	if currPage.Header.Next < 0 {
 		return nil, errors.New("There is no next page, this is the last one")
 	}
-	nextPage, err := table.FetchDataPage(currPage.Next)
+	nextPage, err := table.FetchDataPage(currPage.Header.Next)
 	return nextPage, err
 }
 
 func (table *Table) PreviousPage(currPage *DataPage) (*DataPage, error) {
-	if currPage.Prev < 0 {
+	if currPage.Header.Prev < 0 {
 		return nil, errors.New("There is no previous page, this is the first one")
 	}
-	previousPage, err := table.FetchDataPage(currPage.Prev)
+	previousPage, err := table.FetchDataPage(currPage.Header.Prev)
 	return previousPage, err
 }
 
 // Reads the header of a Page and returns the resulting DataPage
 func (table *Table) decodePage(page *pager.Page) (*DataPage, error) {
 	dataPage := &DataPage{
-		page: page,
+		page:   page,
+		Header: DataPageHeader{},
 	}
 
-	next, n := binary.Varint(page.Memory[0:8])
+	reader := bytes.NewReader(page.Memory[0:binary.Size(dataPage.Header)])
+	binary.Read(reader, binary.BigEndian, &dataPage.Header)
+
+	/*next, n := binary.Varint(page.Memory[0:8])
 	if n <= 0 {
 		return nil, errors.New("Next deserialization failed")
 	}
-	dataPage.Next = next
+	dataPage.Header.Next = next
 
 	prev, n := binary.Varint(page.Memory[8:16])
 	if n <= 0 {
 		return nil, errors.New("Prev deserialization failed")
 	}
-	dataPage.Prev = prev
+	dataPage.Header.Prev = prev
 
 	entrySize, n := binary.Varint(page.Memory[16:24])
 	if n <= 0 {
 		return nil, errors.New("EntrySize deserialization failed")
 	}
-	dataPage.EntrySize = entrySize
+	dataPage.Header.EntrySize = entrySize
 
 	freeEntries, n := binary.Varint(page.Memory[24:32])
 	if n <= 0 {
 		return nil, errors.New("FreeEntries deserialization failed")
 	}
-	dataPage.FreeEntries = freeEntries
+	dataPage.Header.FreeEntries = freeEntries*/
 
 	return dataPage, nil
 }
