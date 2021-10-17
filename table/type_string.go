@@ -16,10 +16,7 @@ const STRING_LEN_LEN = 8
 var TypeString = &DataType{
 	Decode: func(encoded []byte) (ColumnValue, error) {
 		// The byte length of the value field
-		valueLength, n := binary.Uvarint(encoded[0:STRING_LEN_LEN])
-		if n <= 0 {
-			return nil, errors.New("Failed to decode string length")
-		}
+		valueLength := binary.BigEndian.Uint64(encoded)
 		value := string(encoded[STRING_LEN_LEN : STRING_LEN_LEN+valueLength])
 		return StringFrom(value), nil
 	},
@@ -43,8 +40,8 @@ func (l *ValString) Length() int {
 
 func (l *ValString) Encode() []byte {
 	res := make([]byte, STRING_LEN_LEN+len(l.Value))
-	binary.PutUvarint(res[0:STRING_LEN_LEN], uint64(len(l.Value)))
-	copy(res[STRING_LEN_LEN:], []byte(l.Value))
+	binary.BigEndian.PutUint64(res, uint64(len(l.Value)))
+	copy(res[STRING_LEN_LEN:STRING_LEN_LEN+len(l.Value)], []byte(l.Value))
 	return res
 }
 

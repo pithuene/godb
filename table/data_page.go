@@ -75,7 +75,6 @@ func (page *DataPage) GetEntry(entryIdx int16) ([]byte, error) {
 	}
 
 	offset := page.RowPointers[entryIdx]
-
 	if offset < 0 { // Pointer not in use
 		return nil, errors.New("Entry index empty")
 	}
@@ -117,6 +116,7 @@ func (dpage *DataPage) FindFreeEntry(requiredSpace int) ([]byte, error) {
 	rowPointerIdx := dpage.findAvailableRowPointer()
 	rowStart := dpage.Header.FreeSpaceEnd - int16(requiredSpace) - 1
 	dpage.RowPointers[rowPointerIdx] = rowStart
+	dpage.Header.FreeSpaceEnd = rowStart
 
 	return dpage.page.Memory[rowStart : int(rowStart)+requiredSpace], nil
 }

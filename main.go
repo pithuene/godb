@@ -38,6 +38,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	insertValue = []table.ColumnValue{
+		table.LongFrom(2),
+		table.StringFrom("Variable sizes implemented"),
+	}
+	err = newTable.Insert(insertValue)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	row, err := newTable.Select("key", table.LongFrom(1))
 	if err != nil {
 		log.Fatal(err)
