@@ -2,6 +2,7 @@ package main
 
 import (
 	"godb/table"
+	"godb/table/types"
 	"log"
 	"os"
 )
@@ -19,8 +20,8 @@ func main() {
 		LastPageIdx:  -1,
 		Schema: table.TableSchema{
 			Columns: []table.ColumnDef{
-				{Name: "key", Type: table.TypeLong},
-				{Name: "value", Type: table.TypeString},
+				{Name: "key", Type: types.TypeLong},
+				{Name: "value", Type: types.TypeString},
 			},
 		},
 	}
@@ -30,8 +31,8 @@ func main() {
 	}
 
 	insertValue := []table.ColumnValue{
-		table.LongFrom(1),
-		table.StringFrom("Hello World"),
+		types.Long(1),
+		types.String("Hello World"),
 	}
 	err = newTable.Insert(insertValue)
 	if err != nil {
@@ -39,15 +40,15 @@ func main() {
 	}
 
 	insertValue = []table.ColumnValue{
-		table.LongFrom(2),
-		table.StringFrom("Variable sizes implemented"),
+		types.Long(2),
+		types.String("Variable sizes implemented"),
 	}
 	err = newTable.Insert(insertValue)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	row, err := newTable.Select("key", table.LongFrom(1))
+	row, err := newTable.Select("key", types.Long(1))
 	if err != nil {
 		log.Fatal(err)
 	} else {
