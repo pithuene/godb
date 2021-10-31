@@ -28,6 +28,9 @@ func OpenPager(filename string) (*Pager, error) {
 }
 
 func (pager *Pager) mapPageToMemory(pageIdx int64) (*Page, error) {
+	if pageIdx < 0 {
+		return nil, errors.New("Invalid page idx")
+	}
 	fileInfo, err := pager.File.Stat()
 	if err != nil {
 		return nil, err

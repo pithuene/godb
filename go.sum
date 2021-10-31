@@ -1,2 +1,4 @@
+github.com/SananGuliyev/sqlparser v1.1.0 h1:4jms/J0axlAkS36hD7jPRRN382lgKCJXp2qJxIZqhAY=
+github.com/SananGuliyev/sqlparser v1.1.0/go.mod h1:/qfKSQbZm5YkykdVWpCYrWBxtksvZR7wFC315XL9fdc=
 golang.org/x/sys v0.0.0-20211003122950-b1ebd4e1001c h1:EyJTLQbOxvk8V6oDdD8ILR1BOs3nEJXThD6aqsiPNkM=
 golang.org/x/sys v0.0.0-20211003122950-b1ebd4e1001c/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
