@@ -17,6 +17,7 @@ var TypeString = &table.DataType{
 		value := string(encoded[STRING_LEN_LEN : STRING_LEN_LEN+valueLength])
 		return String(value), nil
 	},
+	Id: 1,
 }
 
 type String string

@@ -10,6 +10,8 @@ import (
 const DATABASE_FILE = "database.db"
 
 func main() {
+	types.InitializeTypeIds()
+
 	os.Remove(DATABASE_FILE)
 	db, err := OpenDatabase(DATABASE_FILE)
 
@@ -54,6 +56,15 @@ func main() {
 	} else {
 		for i, col := range row {
 			log.Println(newTable.Schema.Columns[i].Name + ": " + col.String())
+		}
+	}
+
+	row, err = db.TableDictionary.Select("Name", types.String("TableDictionary"))
+	if err != nil {
+		log.Fatal(err)
+	} else {
+		for i, col := range row {
+			log.Println(db.TableDictionary.Schema.Columns[i].Name + ": " + col.String())
 		}
 	}
 

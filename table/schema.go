@@ -24,6 +24,7 @@ type DataType struct {
 	// Decodes the value from a byte slice that starts with the value (can be longer)
 	// For variable length values the length can be encoded in the first bytes.
 	Decode func([]byte) (ColumnValue, error)
+	Id     uint16
 }
 
 type Row []ColumnValue

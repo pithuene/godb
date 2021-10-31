@@ -15,6 +15,7 @@ var TypeLong = &table.DataType{
 		}
 		return Long(result), nil
 	},
+	Id: 0,
 }
 
 type Long int64

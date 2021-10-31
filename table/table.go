@@ -8,6 +8,7 @@ import (
 )
 
 type Table struct {
+	// Pointer to the database pager
 	Pager *pager.Pager
 	// The index of the first DataPage
 	FirstPageIdx int64
